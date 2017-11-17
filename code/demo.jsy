@@ -20,15 +20,18 @@ if 0 ::
   transform_jsy.file @ `${basedir}/parser.js`
 
 if 1 ::
-  transform_jsy.func @ function() ::
+  transform_jsy @ `
     console.log @ 'this is a test' /* this is an inline comment */, 'suffix'
 
     console.log @ 'this is a test' // this is an EOL comment */, 'suffix'
 
-    console.log @ 'this is a test' /* this is a multiline comment *
-      and still a comment
+    if true ::
+      console.log @ 'this is @ test' /* this is a multiline comment *
+        and still a comment
 
-      but now */ , 'we are done'
+        but now @: */ , 'we are done'
 
     console.log @ "bye!"
-  .then @ debug_lines
+    `
+
+  //.then @ debug_lines

@@ -20,5 +20,8 @@
     "demo": "babel-node test/demo.jsy",
     "pretest": "npm -s run build",
     "test": "true"
+  },
+  "dependencies": {
+    "xmldom": "^0.1.27"
   }
 }
