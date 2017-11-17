@@ -13,8 +13,8 @@
     ]
   },
   "scripts": {
-    "start": "node dist/jsy_regexp.js",
-    "start:dev": "nodemon -d 1 dist/jsy_regexp.js",
+    "start": "node dist/demo.js",
+    "start:dev": "nodemon -d 1 dist/demo.js",
     "build": "rollup --config",
     "watch": "npm -s run build -- --watch",
     "demo": "babel-node test/demo.jsy",

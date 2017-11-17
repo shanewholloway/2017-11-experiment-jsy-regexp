@@ -1,0 +1,34 @@
+const fs = require('fs')
+const basedir = '/Users/sholloway/shane-public/babel-plugin-offside-js/code'
+
+const transform_jsy = require('./jsy_regexp')
+
+function debug_lines(lines) ::
+  const repr = x=>x //JSON.stringify
+  for const l of lines ::
+    const {src, pos, shadow, indent, skip} = l
+    if skip ::
+      console.log @ pos.line, 'SKIP', shadow, repr(src)
+    else if false !== indent ::
+      console.log @ pos.line, repr(indent), shadow, repr(src)
+    else ::
+      console.log @ pos.line, false, shadow, repr(src)
+    //console.dir @ l, @: colors: true
+
+
+if 0 ::
+  transform_jsy.file @ `${basedir}/parser.js`
+
+if 1 ::
+  transform_jsy.func @ function() ::
+    console.log @ 'this is a test' /* this is an inline comment */, 'suffix'
+
+    console.log @ 'this is a test' // this is an EOL comment */, 'suffix'
+
+    console.log @ 'this is a test' /* this is a multiline comment *
+      and still a comment
+
+      but now */ , 'we are done'
+
+    console.log @ "bye!"
+  .then @ debug_lines

@@ -1,72 +1,73 @@
-const fs = require('fs')
-const basedir = '/Users/sholloway/shane-public/babel-plugin-offside-js/code'
 
-function transform_jsy_source(fn) ::
-  return transform_jsy @ fn.toString()
-function transform_jsy_filename(filename) ::
+const tokenizers = @[]
+  @{} name: 'comment_eol', kind:'//', open: /\/\//, close: /.*($)/
+  @{} name: 'comment_multi', kind:'/*', open: /\/\*/, close: /.*?(\*\/|$)/, multiline: true
+  @{} name: 'str_single', kind:"'", open: /'/, close: /(?:\\.|[^'])*(')/
+  @{} name: 'str_double', kind:'"', open: /"/, close: /(?:\\.|[^"])*(")/
+  @{} name: 'str_multi', kind:'`', open: /`/, close: /(?:\\.|[^`])*(`|$)/, multiline: true
+  @{} name: 'empty_line', kind:'', open: /^/, close: /\s*($)/
+
+const rx_tokens = new RegExp @
+  tokenizers
+    .map @ e => `(?:(${e.open.source})${e.close.source})`
+    .join('|')
+  'g'
+
+tokenizers.multiline = {}
+tokenizers.kind = {}
+
+::
+  for const each of tokenizers ::
+    tokenizers.kind[each.kind] = each
+    tokenizers.kind[each.name] = each
+    if each.multiline ::
+      tokenizers.multiline[each.kind] = each
+
+
+const rx_offside = /\B(::()|::{}|::[]|::|@()|@{}|@[]|@:|@#|@|)\B/
+
+transform_jsy.func = function (func) ::
+  return transform_jsy @ func.toString()
+transform_jsy.file = function(filename) ::
   return new Promise @ (resolve, reject) =>
     fs.readFile @ filename, 'utf8', (err, src) =>
       err ? reject(err) : resolve @ transform_jsy @ src, filename
 
-const rx_tokenizers = @{}
-  comment_eol: @{} open: /\/\//, close: /.*($)/
-  comment_multi: @{} open: /\/\*/, close: /.*?(\*\/|$)/
-  str_single: @{} open: /'/, close: /(?:\\.|[^'])*(')/
-  str_double: @{} open: /"/, close: /(?:\\.|[^"])*(")/
-  str_multi: @{} open: /`/, close: /(?:\\.|[^`])*(`|$)/
-  empty: @{} open: /^/, close: /\s*($)/
-
-const rx_tokens = new RegExp @
-  Object.values(rx_tokenizers)
-    .map @ e => `(?:(${e.open.source})${e.close.source})`
-    .join('|')
-  'g'
-rx_tokens.continue = @{}
-  '/*': rx_tokenizers.comment_multi.close
-  '`': rx_tokenizers.str_multi.close
-
-
-const rx_offside = /\B(::()|::{}|::[]|::|@()|@{}|@[]|@:|@#|@|)\B/
-function transform_jsy(src, filename) ::
+export default transform_jsy
+async function transform_jsy(src, filename) ::
   const lines = src.split(/\r\n|\r|\n/)
     .map @ (src, idx) => @:
       src, pos: @{} line: 1+idx, //filename
 
   tokenize @ lines[0]
   lines.reduce @ (a, b) => ::
-    tokenize @ b, a.rx_continue
+    tokenize @ b, a.tkn_continue
     return b
 
-  const repr = x=>x //JSON.stringify
-  for const l of lines ::
-    const {src, pos, shadow, indent, skip} = l
-    if skip ::
-      console.log @ pos.line, 'SKIP', repr(src)
-    else if false !== indent ::
-      console.log @ pos.line, repr(indent), shadow, repr(src)
-    else ::
-      console.log @ pos.line, false, shadow, repr(src)
-    //console.dir @ l, @: colors: true
+  return lines
 
 
-function tokenize(entry, rx_continue) ::
+function tokenize(entry, tkn_continue) ::
   let sz0=0, {src} = entry
   const src_orig=src, shadow = entry.shadow = []
 
-  if null == rx_continue ::
+  if null == tkn_continue ::
     entry.indent = src.match(/^\s*/)[0]
   else ::
     entry.indent = false
-    src = src.replace @ rx_continue, (match, ...args) => ::
-      shadow.push @ 0, match.length
+    src = src.replace @ tkn_continue.close, (match, ...args) => ::
+      shadow.push @ 0, match.length, tkn_continue.name
       return ''
     if '' === src ::
-      entry.rx_continue = rx_continue
+      entry.tkn_continue = tkn_continue
       entry.skip = true
       return
     sz0 = src_orig.length - src.length
 
-  src.replace @ rx_tokens, (match, ...pairs) => ::
+  src.replace @ rx_tokens, map_shadows
+  return entry
+
+  function map_shadows(match, ...pairs) ::
     const src = pairs.pop()
     const pos = pairs.pop()
     pairs = pairs.filter @ e=> undefined !== e
@@ -75,9 +76,9 @@ function tokenize(entry, rx_continue) ::
       throw new Error @ 'Pair mismatch'
 
     if ! pairs[1] ::
-      const rx_continue = rx_tokens.continue[pairs[0]]
-      if rx_continue ::
-        entry.rx_continue = rx_continue
+      const tkn_continue = tokenizers.multiline[pairs[0]]
+      if tkn_continue ::
+        entry.tkn_continue = tkn_continue
 
       if ! pairs[0] ::
         entry.skip = true
@@ -87,21 +88,7 @@ function tokenize(entry, rx_continue) ::
     const s = sz0 + pos, e = s+match.length, orig = src_orig.slice(s,e)
     if match != orig ::
       throw new Error @ `Slice mismatch (s:${s} e:${e} m:"${match}" orig:"${orig}")`
-    shadow.push @ s,e
+    shadow.push @ s,e, tokenizers.kind[pairs[0]].name
     return match // no-op
 
-if 0 ::
-  transform_jsy_filename @ `${basedir}/parser.js`
 
-if 1 ::
-  transform_jsy_source @ function() ::
-    console.log @ 'this is a test' /* this is an inline comment */, 'suffix'
-
-    console.log @ 'this is a test' // this is an EOL comment */, 'suffix'
-
-    console.log @ 'this is a test' /* this is a multiline comment *
-      and still a comment
-
-      but now */ , 'we are done'
-
-    console.log @ "bye!"

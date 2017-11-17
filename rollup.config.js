@@ -1,7 +1,7 @@
 import rpi_babel from 'rollup-plugin-babel'
 
 const sourcemap = 'inline'
-const external = []
+const external = ['fs']
 const plugins = [jsy_plugin()]
 
 export default [
@@ -10,7 +10,12 @@ export default [
       { file: `dist/jsy_regexp.js`, format: 'cjs' },
       { file: `dist/jsy_regexp.mjs`, format: 'es' },
     ],
-    sourcemap, external, plugins },
+    sourcemap, plugins, external: []},
+
+	{ input: 'code/demo.jsy',
+		output: [{ file: `dist/demo.js`, format: 'cjs' },
+    ],
+    sourcemap, plugins, external: []},
 ]
 
 
