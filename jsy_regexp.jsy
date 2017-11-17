@@ -1,0 +1,107 @@
+const fs = require('fs')
+const basedir = '/Users/sholloway/shane-public/babel-plugin-offside-js/code'
+
+function transform_jsy_source(fn) ::
+  return transform_jsy @ fn.toString()
+function transform_jsy_filename(filename) ::
+  return new Promise @ (resolve, reject) =>
+    fs.readFile @ filename, 'utf8', (err, src) =>
+      err ? reject(err) : resolve @ transform_jsy @ src, filename
+
+const rx_tokenizers = @{}
+  comment_eol: @{} open: /\/\//, close: /.*($)/
+  comment_multi: @{} open: /\/\*/, close: /.*?(\*\/|$)/
+  str_single: @{} open: /'/, close: /(?:\\.|[^'])*(')/
+  str_double: @{} open: /"/, close: /(?:\\.|[^"])*(")/
+  str_multi: @{} open: /`/, close: /(?:\\.|[^`])*(`|$)/
+  empty: @{} open: /^/, close: /\s*($)/
+
+const rx_tokens = new RegExp @
+  Object.values(rx_tokenizers)
+    .map @ e => `(?:(${e.open.source})${e.close.source})`
+    .join('|')
+  'g'
+rx_tokens.continue = @{}
+  '/*': rx_tokenizers.comment_multi.close
+  '`': rx_tokenizers.str_multi.close
+
+
+const rx_offside = /\B(::()|::{}|::[]|::|@()|@{}|@[]|@:|@#|@|)\B/
+function transform_jsy(src, filename) ::
+  const lines = src.split(/\r\n|\r|\n/)
+    .map @ (src, idx) => @:
+      src, pos: @{} line: 1+idx, //filename
+
+  tokenize @ lines[0]
+  lines.reduce @ (a, b) => ::
+    tokenize @ b, a.rx_continue
+    return b
+
+  const repr = x=>x //JSON.stringify
+  for const l of lines ::
+    const {src, pos, shadow, indent, skip} = l
+    if skip ::
+      console.log @ pos.line, 'SKIP', repr(src)
+    else if false !== indent ::
+      console.log @ pos.line, repr(indent), shadow, repr(src)
+    else ::
+      console.log @ pos.line, false, shadow, repr(src)
+    //console.dir @ l, @: colors: true
+
+
+function tokenize(entry, rx_continue) ::
+  let sz0=0, {src} = entry
+  const src_orig=src, shadow = entry.shadow = []
+
+  if null == rx_continue ::
+    entry.indent = src.match(/^\s*/)[0]
+  else ::
+    entry.indent = false
+    src = src.replace @ rx_continue, (match, ...args) => ::
+      shadow.push @ 0, match.length
+      return ''
+    if '' === src ::
+      entry.rx_continue = rx_continue
+      entry.skip = true
+      return
+    sz0 = src_orig.length - src.length
+
+  src.replace @ rx_tokens, (match, ...pairs) => ::
+    const src = pairs.pop()
+    const pos = pairs.pop()
+    pairs = pairs.filter @ e=> undefined !== e
+
+    if pairs.length !== 2 ::
+      throw new Error @ 'Pair mismatch'
+
+    if ! pairs[1] ::
+      const rx_continue = rx_tokens.continue[pairs[0]]
+      if rx_continue ::
+        entry.rx_continue = rx_continue
+
+      if ! pairs[0] ::
+        entry.skip = true
+        entry.indent = false
+        return match // no-op
+
+    const s = sz0 + pos, e = s+match.length, orig = src_orig.slice(s,e)
+    if match != orig ::
+      throw new Error @ `Slice mismatch (s:${s} e:${e} m:"${match}" orig:"${orig}")`
+    shadow.push @ s,e
+    return match // no-op
+
+if 0 ::
+  transform_jsy_filename @ `${basedir}/parser.js`
+
+if 1 ::
+  transform_jsy_source @ function() ::
+    console.log @ 'this is a test' /* this is an inline comment */, 'suffix'
+
+    console.log @ 'this is a test' // this is an EOL comment */, 'suffix'
+
+    console.log @ 'this is a test' /* this is a multiline comment *
+      and still a comment
+
+      but now */ , 'we are done'
+
+    console.log @ "bye!"
