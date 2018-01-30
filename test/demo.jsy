@@ -1,0 +1,54 @@
+const {promisify} = require('util')
+const fs = require('fs')
+const readFile = promisify @ fs.readFile
+
+//const offside_scanner = require('../dist/offside_scanner')
+//const bind_basic_scanner = require('../dist/basic_scanner')
+//const jsScanner = bind_basic_scanner @ bind_basic_scanner.javascript_scanners
+const bind_jsy_scanner = require('../dist/jsy_scanner')
+const jsyScanner = bind_jsy_scanner()
+
+const pretty_ln = ln => ::
+  const i = null == ln.indent ? ' -'
+    : (ln.indent.length+'').padStart(2)
+  const line_no = (ln.idx+'').padStart(4)
+
+  return ln.content
+      ? `${line_no}|${i}| ${ln.content}`
+      : `${line_no}|${i}|`
+
+function xform_repr(lines) ::
+  return lines.map @ pretty_ln
+
+function xform_raw(lines) ::
+  return lines.map @ ln => ln.content || ''
+
+function xform_blocks(lines) ::
+  return lines
+    .filter @ ln => ln.isBlockStart()
+    .map @ ln => ln.blockSlice().map(pretty_ln)
+      
+
+
+function dbg() ::
+
+if 1 ::
+  const basedir = '/Users/sholloway/shane-public/babel-plugin-offside-js/code'
+  dbg @ 'a crazy self-referencing example', /* tail
+    readFile(`${basedir}/parser.js`, 'utf-8')
+        blah blah */
+
+  readFile(__filename, 'utf-8')
+  //.then @ offside_scanner
+  //.then @ lines => lines.slice(0,18)
+  .then @ jsyScanner
+  //.then @ xform_repr
+  //.then @ res => :: console.dir @ res, @{} colors: true, depth: null
+  .then @ res => ::
+    for const ln of res ::
+      //if ln.blank :: continue
+      console.log @ ln.t_content
+
+else ::
+  const lines = offside_scanner @ '  \n'
+  console.dir @ lines, @{} colors: true

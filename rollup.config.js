@@ -5,16 +5,26 @@ const external = ['fs']
 const plugins = [jsy_plugin()]
 
 export default [
-	{ input: 'code/jsy_regexp.jsy',
+	{ input: 'code/offside_scanner.jsy',
 		output: [
-      { file: `dist/jsy_regexp.js`, format: 'cjs' },
-      { file: `dist/jsy_regexp.mjs`, format: 'es' },
+      { file: `dist/offside_scanner.js`, sourcemap, format: 'cjs' },
+      { file: `dist/offside_scanner.mjs`, sourcemap, format: 'es' },
     ],
-    sourcemap, plugins, external: []},
+    plugins, external: []},
 
-	{ input: 'code/demo.jsy',
-		output: [{ file: `dist/demo.js`, format: 'cjs' }],
-    sourcemap, plugins, external: []},
+	{ input: 'code/basic_scanner.jsy',
+		output: [
+      { file: `dist/basic_scanner.js`, sourcemap, format: 'cjs' },
+      { file: `dist/basic_scanner.mjs`, sourcemap, format: 'es' },
+    ],
+    plugins, external: []},
+
+	{ input: 'code/jsy_scanner.jsy',
+		output: [
+      { file: `dist/jsy_scanner.js`, sourcemap, format: 'cjs' },
+      { file: `dist/jsy_scanner.mjs`, sourcemap, format: 'es' },
+    ],
+    plugins, external: []},
 ]
 
 

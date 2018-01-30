@@ -1,0 +1,130 @@
+export default bind_jsy_scanner
+const rx_eol = /^[ \t]*$/
+
+function bind_jsy_scanner(at_offside, keyword_offside) ::
+  if null == at_offside ::
+    at_offside = bind_jsy_scanner.at_offside
+  if null == keyword_offside ::
+    keyword_offside = bind_jsy_scanner.keyword_offside
+
+  const rx_jsy_ops = new RegExp @
+    at_offside
+      .filter @ e => e.jsy_op
+      .map @ e => e.jsy_op.replace(/./g, '\\$&')
+      .join('|')
+    'g'
+
+  const scn_op = {}
+  for const ea of at_offside ::
+    scn_op[ea.jsy_op] = ea
+
+  return jsy_scanner
+
+  function jsy_scanner(offside_lines) ::
+    if 'string' === typeof offside_lines ::
+      offside_lines = 
+        javascript_scanner @
+          offside_scanner @
+            offside_lines
+
+    for const ln of offside_lines ::
+      if ln.blank ::
+        ln.t_content = ''
+        continue
+
+      let jsy_eol, jsy_stack = []
+
+      for const ea of ln.ops ::
+        jsy_eol = null
+        if 'src' !== ea.op :: continue
+
+        const kw_match = ea.sz.match @ keyword_offside
+        if kw_match ::
+          ea.sz = ea.sz.replace @ kw_match[0],
+            `${kw_match[1]}${kw_match[2]} ( ${kw_match[3]} ) {`
+
+          jsy_stack.unshift('}')
+          // TODO: Stack management is not quite right for offside keywords…
+
+        ea.sz = ea.sz.replace @ rx_jsy_ops, (match, pos, sz_line) => ::
+          const {pre, post} = scn_op[match]
+          jsy_stack.unshift(post)
+          jsy_eol =
+            rx_eol.test @ sz_line.slice @ pos+match.length
+            ? match : false
+          return pre
+
+      if 0 < jsy_stack.length ::
+        const end = ln.findBlockEnd()
+        end.jsy_stack = jsy_stack.concat @ end.jsy_stack || []
+
+      ln.t_content = render(ln)
+    return offside_lines
+
+
+function render(ln) ::
+  const res = new JSYRenderer(ln)
+  for const ea of ln.ops ::
+    if ! res[ea.op] ::
+      console.log @# ea.op, res[ea.op]
+    else res[ea.op](ea)
+  return res.done()
+
+class JSYRenderer ::
+  constructor(ln) ::
+    this._res = []
+    this.ln = ln
+    this.jsy_post = ln.jsy_stack
+      ? ' ' + ln.jsy_stack.join(' ')
+      : ''
+
+  _push(ea) ::
+    if ea.sz :: this._res.push(ea.sz)
+  _fin() ::
+    if this.jsy_post :: this._res.push(this.jsy_post)
+    this.jsy_post = ''
+
+  toString() :: return this._res.join('')
+  done() ::
+    this._fin()
+    return this.toString()
+
+  src(ea) :: this._push(ea)
+  str_single(ea) :: this._push(ea)
+  str_double(ea) :: this._push(ea)
+
+  str_multi(ea) ::
+    if ea.cont && this.ln.jsy_stack ::
+      throw new Error @ `multiline string and loaded jsy_stack`
+
+    this._push(ea)
+  comment_eol(ea) ::
+    this._fin()
+    this._push(ea)
+  comment_multi(ea) ::
+    if ea.cont :: this._fin()
+    this._push(ea)
+
+
+import offside_scanner from './offside_scanner.jsy'
+import bindBasicScanner from './basic_scanner.jsy'
+const javascript_scanner = bindBasicScanner @
+  bindBasicScanner.javascript_scanners
+
+
+bind_jsy_scanner.at_offside = @[]
+  @{} jsy_op: '::@', pre: "(", post: ")", nestInner: false, implicitCommas: false,
+  @{} jsy_op: '::()', pre: "(", post: ")", nestInner: false, implicitCommas: false,
+  @{} jsy_op: '::{}', pre: "{", post: "}", nestInner: false, implicitCommas: false,
+  @{} jsy_op: '::[]', pre: "[", post: "]", nestInner: false, implicitCommas: false,
+  @{} jsy_op: '::', pre: "{", post: "}", nestInner: false, implicitCommas: false,
+
+  @{} jsy_op: '@:', pre: "({", post: "})", nestInner: true, implicitCommas: true
+  @{} jsy_op: '@#', pre: "([", post: "])", nestInner: true, implicitCommas: true,
+  @{} jsy_op: '@()', pre: "{", post: "}", nestInner: true, implicitCommas: true,
+  @{} jsy_op: '@{}', pre: "{", post: "}", nestInner: true, implicitCommas: true
+  @{} jsy_op: '@[]', pre: "[", post: "]", nestInner: true, implicitCommas: true,
+  @{} jsy_op: '@', pre: "(", post: ")", nestInner: true, implicitCommas: true,
+
+//keyword_args: @{} pre: "(", post: ")", nestInner: false, inKeywordArg: true, implicitCommas: false,
+bind_jsy_scanner.keyword_offside = /^([ \t]*)(if|while|catch|for await|for)\s+([^(][^:]*?)(\s::\s|\s::$|$)/
