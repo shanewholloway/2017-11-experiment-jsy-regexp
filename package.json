@@ -1,7 +1,11 @@
 {
   "private": true,
   "bin": "./dist/bin.js",
-  "pkg": { "targets": [ "host" ] },
+  "pkg": {
+    "targets": [
+      "host"
+    ]
+  },
   "dependencies": {
     "source-map": "^0.6.1"
   },

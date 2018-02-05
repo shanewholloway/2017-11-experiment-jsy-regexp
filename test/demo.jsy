@@ -1,6 +1,7 @@
 const {promisify} = require('util')
 const fs = require('fs')
 const readFile = promisify @ fs.readFile
+const writeFile = promisify @ fs.writeFile
 
 //const offside_scanner = require('../dist/offside_scanner')
 //const bind_basic_scanner = require('../dist/basic_scanner')
@@ -33,22 +34,37 @@ function xform_blocks(lines) ::
 function dbg() ::
 
 if 1 ::
-  const basedir = '/Users/sholloway/shane-public/babel-plugin-offside-js/code'
   dbg @ 'a crazy self-referencing example', /* tail
     readFile(`${basedir}/parser.js`, 'utf-8')
         blah blah */
 
-  readFile(__filename, 'utf-8')
+  const filename = process.argv.slice(-1).pop()
+  readFile(filename, 'utf-8')
   //.then @ offside_scanner
   //.then @ lines => lines.slice(0,18)
-  .then @ jsyScanner
+  .then @ content =>
+    jsyScanner @ content, @{} file: `${filename}.js`, source: filename
   //.then @ xform_repr
   //.then @ res => :: console.dir @ res, @{} colors: true, depth: null
-  .then @ res =>
-    res.map @ ln => ln.t_content
-    .join @ '\n'
+  .then @ res => ::
+    if 0 ::
+      for const ln of res ::
+        if null == ln.ops :: continue
+        const idx = ln.ops.findIndex @ e => e.op.startsWith('comment')
+        if idx >= 0 ::
+          console.log()
+          console.dir @ ln, @{} colors: true
+
+    const src = 
+      res.map @ ln => ln.t_content
+      .join @ '\n'
+    return `${src}\n${res.src_map.toComment()}\n`
+    
   .then @ js_content =>
-    process.stdout.write @ js_content
+    writeFile @
+        filename+'.out.js'
+      , js_content || ''
+      , 'utf-8'
 
 else ::
   const lines = offside_scanner @ '  \n'

@@ -58,6 +58,9 @@ function bindBasicScanner(scannerList) ::
       if c0 < content.length ::
         emit @: op: 'src', c0, c1:content.length, sz: content.slice(c0)
 
+      if continue_scan ::
+        ops[ops.length-1].cont = true
+
     return offside_lines
 
 

@@ -1,4 +1,4 @@
-import jsy_render from './jsy_render.jsy'
+import jsy_renderer from './jsy_render.jsy'
 export default bind_jsy_scanner
 
 const rx_eol = /^[ \t]*$/
@@ -25,20 +25,23 @@ function bind_jsy_scanner(options={}) ::
 
   return jsy_scanner
 
-  function jsy_scanner(offside_lines) ::
+  function jsy_scanner(offside_lines, options) ::
     if 'string' === typeof offside_lines ::
       offside_lines =
         javascript_scanner @
           offside_scanner @
             offside_lines
 
+    const jsy_render_ln = jsy_renderer(options || {})
+
     const ctx_outer = {}
     for const ln of offside_lines ::
       if ! ln.blank ::
         jsy_expand_line(ln, ctx_outer)
 
-      ln.t_content = jsy_render(ln)
+      jsy_render_ln(ln)
 
+    offside_lines.src_map = jsy_render_ln.src_map
     return offside_lines
 
   function _last_non_comment(ops) ::
@@ -49,49 +52,45 @@ function bind_jsy_scanner(options={}) ::
   function jsy_expand_line(ln, ctx_outer) ::
     const ops = ln.ops, new_ops = []
     const ctx = @{}
-      ln
       __proto__: ctx_outer
+      ln, jsy_stack: []
       first_op: ops[0]
       last_op: _last_non_comment(ops)
-    const emit = op => ::
-      //console.dir @ {emit: op}, @{} colors: true
-      new_ops.push(op)
+    const emit = op => :: new_ops.push(op)
     ln.ops = new_ops
 
     for const op of ops ::
       jsy_split_ops @ ctx, op, emit
 
+    fixup_jsy_stack(ctx)
     ctx_outer.in_kw = ctx.in_kw
-    return ops
 
   function jsy_split_ops(ctx, op, emit) ::
-    if 'src' !== op.op ::
+    if 'src' !== op.op || rx_eol.test(op.sz) ::
       return emit(op)
 
-    let c0=0, sz=op.sz
-    let jsy_stack=[]
+    let c0=0, sz=op.sz, jsy_stack=ctx.jsy_stack
 
-    if ctx.in_kw ::
+    if ctx.first_op === op ::
+      if ! ctx.in_kw ::
+        // look for JSY keyword
+        const m_kw = sz.match @ keyword_locator
 
-    else if ctx.first_op === op ::
-      // test for JSY keyword
-      const m_kw = sz.match @ keyword_locator
+        if m_kw ::
+          let pos = c0 + m_kw[0].length
+          emit @: op: 'src', c0, c1:pos, sz: m_kw[0]
+          emit @: op: 'jsy_kw_open', sz: ' ('
+          jsy_stack.unshift @ ''
+          ctx.in_kw = true
 
-      if m_kw ::
-        let pos = c0 + m_kw[0].length
-        emit @: op: 'src', c0, c1:pos, sz: m_kw[0]
-        emit @: op: 'jsy_kw_open', c0, c1:pos, sz: ' ('
-        jsy_stack.push @ ''
-        ctx.in_kw = true
-
-        // fixup c0 and sz for jsy operator parsing
-        c0 = pos
-        sz = ' '.repeat(c0) + sz.slice(c0)
+          // fixup c0 and sz for jsy operator parsing
+          c0 = pos
+          sz = ' '.repeat(c0) + sz.slice(c0)
 
 
-    const is_first = ctx.first_op === op
     const is_last = ctx.last_op === op
 
+    let is_eol
     sz.replace @ rx_jsy_ops, (match, ...args) => ::
       const sz_line = args.pop()
       const pos = args.pop()
@@ -101,27 +100,38 @@ function bind_jsy_scanner(options={}) ::
         const {pre, post} = scn_op[jsy_op]
 
         emit @: op: 'src', c0, c1:pos, sz: sz.slice(c0, pos)
-        const is_eol = is_last && is_eol_match(sz_line, pos, match.length)
+        is_eol = is_last && is_eol_match(sz_line, pos, match.length)
 
         if '::' === jsy_op && ctx.in_kw ::
-          emit @: op: 'jsy_kw_close', c0: pos, c1: pos, sz: ` )`
-          if '' === jsy_stack[0] :: jsy_stack.shift()
+          emit @: op: 'jsy_kw_close', sz: ` )`
           ctx.in_kw = false
 
-        emit @: op: 'jsy_op', c0: pos, c1: pos, sz: ` ${pre}`, pre, post, is_eol
-        jsy_stack.push @ post
+        emit @: op: 'jsy_op', sz: ` ${pre}`, pre, post, is_eol
+        jsy_stack.unshift @ post
 
       c0 = pos + match.length
 
-    if c0 < sz.length ::
+    if c0 < sz.length && ! is_eol_match(sz, c0, 0) ::
       emit @: op: 'src', c0, c1:sz.length, sz: sz.slice(c0)
+      is_eol = false
 
-    if jsy_stack.length > 0 ::
-      const end = ctx.ln.findBlockEnd()
-      end.jsy_stack = [jsy_stack.shift()].concat @ end.jsy_stack || []
-      
-    if jsy_stack.length > 0 ::
-      ctx.ln.jsy_stack = jsy_stack.concat @ ctx.ln.jsy_stack || []
+    ctx.is_eol = is_eol
+
+
+function fixup_jsy_stack(ctx) ::
+  let {ln, jsy_stack, is_eol} = ctx
+  if jsy_stack.length < 0 :: return
+
+  const end = ln.findBlockEnd()
+  if is_eol ::
+    end.jsy_stack = [].concat @ jsy_stack, end.jsy_stack || []
+    return
+
+  if jsy_stack.length > 0 ::
+    end.jsy_stack = [jsy_stack.pop()].concat @ end.jsy_stack || []
+    
+  if jsy_stack.length > 0 ::
+    ln.jsy_stack = jsy_stack.concat @ ln.jsy_stack || []
 
 
 function is_eol_match(sz, pos, len) ::

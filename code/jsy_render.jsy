@@ -1,13 +1,48 @@
-export default render
-export function render(ln) ::
-  if ln.blank :: return ''
+const {SourceMapGenerator} = require('source-map')
 
-  const res = new JSYRenderer(ln)
-  for const ea of ln.ops ::
-    if ! res[ea.op] ::
-      console.log @# ea.op, res[ea.op]
-    else res[ea.op](ea)
-  return res.done()
+export default jsy_renderer
+export function jsy_renderer({file, source}) ::
+  const src_map = new SourceMapGenerator @: file
+
+  class JSYRenderer$ extends JSYRenderer ::
+    _srcmap(op) ::
+      const {c0} = op
+      if null == c0 :: return
+
+      const c0_gen = this._res.reduce @
+        (s,p) => s+p.length, 0
+      const line = this.ln.idx + 1
+      src_map.addMapping @:
+        original: @{} line, column: c0
+        generated: @{} line, column: c0_gen
+        source
+
+  render_line.src_map = @{}
+    toString() :: return src_map.toString()
+    toJSON() :: return src_map.toJSON()
+    toComment() :: return `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${this.toBase64()}`
+    toBase64() :: 
+      if 'undefined' !== typeof Buffer ::
+        return new Buffer(src_map.toString()).toString('base64')
+      else ::
+        return window.btoa @ unescape @ encodeURIComponent @
+          src_map.toString()
+
+  return render_line
+
+  function render_line(ln) ::
+    if ln.blank :: return ''
+
+    const res = new JSYRenderer$(ln)
+    for const op of ln.ops ::
+      if ! res[op.op] ::
+        console.log @# '### DNU:', op.op, res[op.op]
+        res._push @ op
+      else res[op.op](op)
+
+    const t_content = res.done()
+    ln.t_content = t_content
+    return t_content
 
 export class JSYRenderer ::
   constructor(ln) ::
@@ -17,8 +52,10 @@ export class JSYRenderer ::
       ? ' ' + ln.jsy_stack.join(' ')
       : ''
 
-  _push(ea) ::
-    if ea.sz :: this._res.push(ea.sz)
+  _push(op, b_srcmap) ::
+    this._srcmap(op)
+    this._res.push(op.sz)
+
   _fin() ::
     if this.jsy_post :: this._res.push(this.jsy_post)
     this.jsy_post = ''
@@ -28,22 +65,24 @@ export class JSYRenderer ::
     this._fin()
     return this.toString()
 
-  src(ea) :: this._push(ea)
-  str_single(ea) :: this._push(ea)
-  str_double(ea) :: this._push(ea)
+  src(op) :: this._push(op, true)
+  str_single(op) :: this._push(op, true)
+  str_double(op) :: this._push(op, true)
 
-  str_multi(ea) ::
-    if ea.cont && this.ln.jsy_stack ::
+  str_multi(op) ::
+    if op.cont && this.ln.jsy_stack ::
       throw new Error @ `multiline string and loaded jsy_stack`
 
-    this._push(ea)
-  comment_eol(ea) ::
+    this._push(op)
+  comment_eol(op) ::
     this._fin()
-    this._push(ea)
-  comment_multi(ea) ::
-    if ea.cont :: this._fin()
-    this._push(ea)
+    this._push(op)
+  comment_multi(op) ::
+    if op.cont :: this._fin()
+    this._push(op)
 
-  jsy_kw_open(ea) :: this._push(ea)
-  jsy_kw_close(ea) :: this._push(ea)
-  jsy_op(ea) :: this._push(ea)
+  jsy_kw_open(op) :: this._push(op)
+  jsy_kw_close(op) :: this._push(op)
+  jsy_op(op) :: this._push(op)
+
+  indent(op) :: this._push(op)
