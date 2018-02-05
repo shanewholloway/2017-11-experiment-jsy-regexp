@@ -25,6 +25,10 @@ export default [
       { file: `dist/jsy_scanner.mjs`, sourcemap, format: 'es' },
     ],
     plugins, external: []},
+
+	{ input: 'code/bin.jsy',
+		output: { file: `dist/bin.js`, format: 'cjs' },
+    plugins, external: []},
 ]
 
 

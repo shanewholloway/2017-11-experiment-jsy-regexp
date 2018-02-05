@@ -1,7 +1,11 @@
+import jsy_render from './jsy_render.jsy'
 export default bind_jsy_scanner
-const rx_eol = /^[ \t]*$/
 
-function bind_jsy_scanner(at_offside, keyword_offside) ::
+const rx_eol = /^[ \t]*$/
+const rx_jsy_op_to_rx = /[@:.\/\\\(\)\{\}\[\]]/g
+
+function bind_jsy_scanner(options={}) ::
+  let {at_offside, keyword_offside} = options
   if null == at_offside ::
     at_offside = bind_jsy_scanner.at_offside
   if null == keyword_offside ::
@@ -10,7 +14,8 @@ function bind_jsy_scanner(at_offside, keyword_offside) ::
   const rx_jsy_ops = new RegExp @
     at_offside
       .filter @ e => e.jsy_op
-      .map @ e => e.jsy_op.replace(/./g, '\\$&')
+      .map @ e => e.jsy_op.replace @ rx_jsy_op_to_rx, '\\$&'
+      .map @ e => `(?:^|[ \\t])${e}(?=$|[ \\t])`
       .join('|')
     'g'
 
@@ -22,89 +27,106 @@ function bind_jsy_scanner(at_offside, keyword_offside) ::
 
   function jsy_scanner(offside_lines) ::
     if 'string' === typeof offside_lines ::
-      offside_lines = 
+      offside_lines =
         javascript_scanner @
           offside_scanner @
             offside_lines
 
+    const ctx_outer = {}
     for const ln of offside_lines ::
-      if ln.blank ::
-        ln.t_content = ''
-        continue
+      if ! ln.blank ::
+        jsy_expand_line(ln, ctx_outer)
 
-      let jsy_eol, jsy_stack = []
+      ln.t_content = jsy_render(ln)
 
-      for const ea of ln.ops ::
-        jsy_eol = null
-        if 'src' !== ea.op :: continue
-
-        const kw_match = ea.sz.match @ keyword_offside
-        if kw_match ::
-          ea.sz = ea.sz.replace @ kw_match[0],
-            `${kw_match[1]}${kw_match[2]} ( ${kw_match[3]} ) {`
-
-          jsy_stack.unshift('}')
-          // TODO: Stack management is not quite right for offside keywords…
-
-        ea.sz = ea.sz.replace @ rx_jsy_ops, (match, pos, sz_line) => ::
-          const {pre, post} = scn_op[match]
-          jsy_stack.unshift(post)
-          jsy_eol =
-            rx_eol.test @ sz_line.slice @ pos+match.length
-            ? match : false
-          return pre
-
-      if 0 < jsy_stack.length ::
-        const end = ln.findBlockEnd()
-        end.jsy_stack = jsy_stack.concat @ end.jsy_stack || []
-
-      ln.t_content = render(ln)
     return offside_lines
 
+  function _last_non_comment(ops) ::
+    for let i = ops.length - 1; 0 <= i ; i-- ::
+      if ! ops[i].op.startsWith('comment') ::
+        return ops[i]
 
-function render(ln) ::
-  const res = new JSYRenderer(ln)
-  for const ea of ln.ops ::
-    if ! res[ea.op] ::
-      console.log @# ea.op, res[ea.op]
-    else res[ea.op](ea)
-  return res.done()
+  function jsy_expand_line(ln, ctx_outer) ::
+    const ops = ln.ops, new_ops = []
+    const ctx = @{}
+      ln
+      __proto__: ctx_outer
+      first_op: ops[0]
+      last_op: _last_non_comment(ops)
+    const emit = op => ::
+      //console.dir @ {emit: op}, @{} colors: true
+      new_ops.push(op)
+    ln.ops = new_ops
 
-class JSYRenderer ::
-  constructor(ln) ::
-    this._res = []
-    this.ln = ln
-    this.jsy_post = ln.jsy_stack
-      ? ' ' + ln.jsy_stack.join(' ')
-      : ''
+    for const op of ops ::
+      jsy_split_ops @ ctx, op, emit
 
-  _push(ea) ::
-    if ea.sz :: this._res.push(ea.sz)
-  _fin() ::
-    if this.jsy_post :: this._res.push(this.jsy_post)
-    this.jsy_post = ''
+    ctx_outer.in_kw = ctx.in_kw
+    return ops
 
-  toString() :: return this._res.join('')
-  done() ::
-    this._fin()
-    return this.toString()
+  function jsy_split_ops(ctx, op, emit) ::
+    if 'src' !== op.op ::
+      return emit(op)
 
-  src(ea) :: this._push(ea)
-  str_single(ea) :: this._push(ea)
-  str_double(ea) :: this._push(ea)
+    let c0=0, sz=op.sz
+    let jsy_stack=[]
 
-  str_multi(ea) ::
-    if ea.cont && this.ln.jsy_stack ::
-      throw new Error @ `multiline string and loaded jsy_stack`
+    if ctx.in_kw ::
 
-    this._push(ea)
-  comment_eol(ea) ::
-    this._fin()
-    this._push(ea)
-  comment_multi(ea) ::
-    if ea.cont :: this._fin()
-    this._push(ea)
+    else if ctx.first_op === op ::
+      // test for JSY keyword
+      const m_kw = sz.match @ keyword_locator
 
+      if m_kw ::
+        let pos = c0 + m_kw[0].length
+        emit @: op: 'src', c0, c1:pos, sz: m_kw[0]
+        emit @: op: 'jsy_kw_open', c0, c1:pos, sz: ' ('
+        jsy_stack.push @ ''
+        ctx.in_kw = true
+
+        // fixup c0 and sz for jsy operator parsing
+        c0 = pos
+        sz = ' '.repeat(c0) + sz.slice(c0)
+
+
+    const is_first = ctx.first_op === op
+    const is_last = ctx.last_op === op
+
+    sz.replace @ rx_jsy_ops, (match, ...args) => ::
+      const sz_line = args.pop()
+      const pos = args.pop()
+
+      if c0 < pos ::
+        const jsy_op = match.replace(/[ \t]/g,'')
+        const {pre, post} = scn_op[jsy_op]
+
+        emit @: op: 'src', c0, c1:pos, sz: sz.slice(c0, pos)
+        const is_eol = is_last && is_eol_match(sz_line, pos, match.length)
+
+        if '::' === jsy_op && ctx.in_kw ::
+          emit @: op: 'jsy_kw_close', c0: pos, c1: pos, sz: ` )`
+          if '' === jsy_stack[0] :: jsy_stack.shift()
+          ctx.in_kw = false
+
+        emit @: op: 'jsy_op', c0: pos, c1: pos, sz: ` ${pre}`, pre, post, is_eol
+        jsy_stack.push @ post
+
+      c0 = pos + match.length
+
+    if c0 < sz.length ::
+      emit @: op: 'src', c0, c1:sz.length, sz: sz.slice(c0)
+
+    if jsy_stack.length > 0 ::
+      const end = ctx.ln.findBlockEnd()
+      end.jsy_stack = [jsy_stack.shift()].concat @ end.jsy_stack || []
+      
+    if jsy_stack.length > 0 ::
+      ctx.ln.jsy_stack = jsy_stack.concat @ ctx.ln.jsy_stack || []
+
+
+function is_eol_match(sz, pos, len) ::
+  if 'string' === typeof len :: len = len.length
+  return rx_eol.test @ sz.slice @ pos+len
 
 import offside_scanner from './offside_scanner.jsy'
 import bindBasicScanner from './basic_scanner.jsy'
@@ -112,13 +134,14 @@ const javascript_scanner = bindBasicScanner @
   bindBasicScanner.javascript_scanners
 
 
-bind_jsy_scanner.at_offside = @[]
+const at_outer_offside = @[]
   @{} jsy_op: '::@', pre: "(", post: ")", nestInner: false, implicitCommas: false,
   @{} jsy_op: '::()', pre: "(", post: ")", nestInner: false, implicitCommas: false,
   @{} jsy_op: '::{}', pre: "{", post: "}", nestInner: false, implicitCommas: false,
   @{} jsy_op: '::[]', pre: "[", post: "]", nestInner: false, implicitCommas: false,
   @{} jsy_op: '::', pre: "{", post: "}", nestInner: false, implicitCommas: false,
 
+const at_inner_offside = @[]
   @{} jsy_op: '@:', pre: "({", post: "})", nestInner: true, implicitCommas: true
   @{} jsy_op: '@#', pre: "([", post: "])", nestInner: true, implicitCommas: true,
   @{} jsy_op: '@()', pre: "{", post: "}", nestInner: true, implicitCommas: true,
@@ -126,5 +149,15 @@ bind_jsy_scanner.at_offside = @[]
   @{} jsy_op: '@[]', pre: "[", post: "]", nestInner: true, implicitCommas: true,
   @{} jsy_op: '@', pre: "(", post: ")", nestInner: true, implicitCommas: true,
 
-//keyword_args: @{} pre: "(", post: ")", nestInner: false, inKeywordArg: true, implicitCommas: false,
-bind_jsy_scanner.keyword_offside = /^([ \t]*)(if|while|catch|for await|for)\s+([^(][^:]*?)(\s::\s|\s::$|$)/
+const at_offside = [].concat @
+  at_outer_offside
+  at_inner_offside
+
+const keyword_locator = /^([ \t]*)(if|while|catch|for await|for)(?=\s+[^(])/
+const keyword_offside = /^([ \t]*)(if|while|catch|for await|for)\s+([^(][^:]*?)(\s::\s|\s::$|$)/
+
+Object.assign @ bind_jsy_scanner, @{}
+  at_offside
+  at_outer_offside
+  at_inner_offside
+  keyword_offside

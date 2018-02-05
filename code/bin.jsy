@@ -1,0 +1,17 @@
+const {promisify} = require('util')
+const {readFile} = require('fs')
+const p_readFile = promisify @ readFile
+
+import bind_jsy_scanner  from './jsy_scanner.jsy'
+const jsyScanner = bind_jsy_scanner()
+
+p_readFile @
+  process.argv.slice().pop()
+  'utf-8'
+.then @ jsyScanner
+.then @ res =>
+  res.map @ ln => ln.t_content
+  .join @ '\n'
+.then @ content =>
+  process.stdout.write @ content
+

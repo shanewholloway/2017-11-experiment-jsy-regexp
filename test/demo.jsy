@@ -44,10 +44,11 @@ if 1 ::
   .then @ jsyScanner
   //.then @ xform_repr
   //.then @ res => :: console.dir @ res, @{} colors: true, depth: null
-  .then @ res => ::
-    for const ln of res ::
-      //if ln.blank :: continue
-      console.log @ ln.t_content
+  .then @ res =>
+    res.map @ ln => ln.t_content
+    .join @ '\n'
+  .then @ js_content =>
+    process.stdout.write @ js_content
 
 else ::
   const lines = offside_scanner @ '  \n'

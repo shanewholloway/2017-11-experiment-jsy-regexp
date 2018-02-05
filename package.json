@@ -1,9 +1,15 @@
 {
   "private": true,
+  "bin": "./dist/bin.js",
+  "pkg": { "targets": [ "host" ] },
+  "dependencies": {
+    "source-map": "^0.6.1"
+  },
   "devDependencies": {
     "babel-cli": "^6.26.0",
     "babel-preset-jsy": "^0.9.4",
     "nodemon": "^1.14.11",
+    "pkg": "^4.3.0",
     "rollup": "^0.55.1",
     "rollup-plugin-babel": "^3.0.3"
   },
@@ -15,6 +21,7 @@
   "scripts": {
     "start": "node dist/demo.js",
     "start:dev": "nodemon -d 1 dist/demo.js",
+    "app": "pkg -d -o=bin/once .",
     "build": "rollup --config",
     "watch": "npm -s run build -- --watch",
     "demo": "babel-node test/demo.jsy",

@@ -26,7 +26,9 @@ function bindBasicScanner(scannerList) ::
     for const ln of offside_lines ::
       if ln.blank :: continue
 
-      let {content} = ln, ops=ln.ops=[], col=0
+      let {content} = ln, ops=ln.ops=[], c0=0
+      const emit = op => :: ops.push(op)
+
       if undefined !== continue_scan ::
         continue_scan = continue_scan(ln)
         if undefined !== continue_scan ::
@@ -34,28 +36,27 @@ function bindBasicScanner(scannerList) ::
 
         if ops.length ::
           const tail = ops[ops.length-1]
-          col = tail.c1
-          content = ' '.repeat(col) + content.slice(col)
+          c0 = tail.c1
+          content = ' '.repeat(c0) + content.slice(c0)
 
       content.replace @ rx_scanner, (match, ...pairs) => ::
         pairs.pop() // content
         const pos = pairs.pop()
 
         pairs = pairs.filter(not_undefined)
-        if col < pos ::
-          ops.push @: op: 'src', c0: col, c1:pos, sz: content.slice(col, pos)
+        if c0 < pos ::
+          emit @: op: 'src', c0, c1:pos, sz: content.slice(c0, pos)
 
-        col = pos + match.length
+        c0 = pos + match.length
 
         const op = scn_ops[pairs[0]]
-        ops.push @: op, c0:pos, c1:col, sz: content.slice(pos, col)
+        emit @: op, c0:pos, c1:c0, sz: content.slice(pos, c0)
 
         continue_scan = ! pairs[1] ? scn_multiline[op] : undefined
 
-      if continue_scan ::
-        ops[ops.length-1].cont = true
-      if col < content.length ::
-        ops.push @: op: 'src', c0: col, c1:content.length, sz: content.slice(col)
+
+      if c0 < content.length ::
+        emit @: op: 'src', c0, c1:content.length, sz: content.slice(c0)
 
     return offside_lines
 

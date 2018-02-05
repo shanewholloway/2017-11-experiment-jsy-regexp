@@ -1,0 +1,49 @@
+export default render
+export function render(ln) ::
+  if ln.blank :: return ''
+
+  const res = new JSYRenderer(ln)
+  for const ea of ln.ops ::
+    if ! res[ea.op] ::
+      console.log @# ea.op, res[ea.op]
+    else res[ea.op](ea)
+  return res.done()
+
+export class JSYRenderer ::
+  constructor(ln) ::
+    this._res = []
+    this.ln = ln
+    this.jsy_post = ln.jsy_stack
+      ? ' ' + ln.jsy_stack.join(' ')
+      : ''
+
+  _push(ea) ::
+    if ea.sz :: this._res.push(ea.sz)
+  _fin() ::
+    if this.jsy_post :: this._res.push(this.jsy_post)
+    this.jsy_post = ''
+
+  toString() :: return this._res.join('')
+  done() ::
+    this._fin()
+    return this.toString()
+
+  src(ea) :: this._push(ea)
+  str_single(ea) :: this._push(ea)
+  str_double(ea) :: this._push(ea)
+
+  str_multi(ea) ::
+    if ea.cont && this.ln.jsy_stack ::
+      throw new Error @ `multiline string and loaded jsy_stack`
+
+    this._push(ea)
+  comment_eol(ea) ::
+    this._fin()
+    this._push(ea)
+  comment_multi(ea) ::
+    if ea.cont :: this._fin()
+    this._push(ea)
+
+  jsy_kw_open(ea) :: this._push(ea)
+  jsy_kw_close(ea) :: this._push(ea)
+  jsy_op(ea) :: this._push(ea)
