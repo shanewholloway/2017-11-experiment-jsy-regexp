@@ -2,7 +2,7 @@ const {SourceMapGenerator} = require('source-map')
 
 export default jsy_renderer
 export function jsy_renderer({file, source}) ::
-  const src_map = new SourceMapGenerator @: file
+  const src_map_gen = new SourceMapGenerator @: file
 
   class JSYRenderer$ extends JSYRenderer ::
     _srcmap(op) ::
@@ -12,21 +12,21 @@ export function jsy_renderer({file, source}) ::
       const c0_gen = this._res.reduce @
         (s,p) => s+p.length, 0
       const line = this.ln.idx + 1
-      src_map.addMapping @:
+      src_map_gen.addMapping @:
         original: @{} line, column: c0
         generated: @{} line, column: c0_gen
         source
 
   render_line.src_map = @{}
-    toString() :: return src_map.toString()
-    toJSON() :: return src_map.toJSON()
+    toString() :: return src_map_gen.toString()
+    toJSON() :: return src_map_gen.toJSON()
     toComment() :: return `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${this.toBase64()}`
     toBase64() :: 
+      const sz = src_map_gen.toString()
       if 'undefined' !== typeof Buffer ::
-        return new Buffer(src_map.toString()).toString('base64')
+        return new Buffer(sz).toString('base64')
       else ::
-        return window.btoa @ unescape @ encodeURIComponent @
-          src_map.toString()
+        return window.btoa @ unescape @ encodeURIComponent @ sz
 
   return render_line
 
@@ -35,14 +35,13 @@ export function jsy_renderer({file, source}) ::
 
     const res = new JSYRenderer$(ln)
     for const op of ln.ops ::
-      if ! res[op.op] ::
-        console.log @# '### DNU:', op.op, res[op.op]
-        res._push @ op
-      else res[op.op](op)
+      res._dispatch(op)
 
     const t_content = res.done()
     ln.t_content = t_content
     return t_content
+
+
 
 export class JSYRenderer ::
   constructor(ln) ::
@@ -51,6 +50,13 @@ export class JSYRenderer ::
     this.jsy_post = ln.jsy_stack
       ? ' ' + ln.jsy_stack.join(' ')
       : ''
+
+  _dispatch(op) ::
+    if 'function' === typeof this[op.op] ::
+      this[op.op](op)
+    else ::
+      console.log @# '### DNU:', op.op, res[op.op]
+      this._push(op)
 
   _push(op, b_srcmap) ::
     this._srcmap(op)
