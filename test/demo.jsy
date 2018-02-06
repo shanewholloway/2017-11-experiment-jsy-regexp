@@ -62,9 +62,9 @@ if 1 ::
     
   .then @ js_content =>
     writeFile @
-        filename+'.out.js'
-      , js_content || ''
-      , 'utf-8'
+      filename+'.out.js',
+      js_content || '',
+      'utf-8',
 
 else ::
   const lines = offside_scanner @ '  \n'

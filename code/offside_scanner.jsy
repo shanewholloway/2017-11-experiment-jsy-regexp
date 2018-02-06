@@ -20,7 +20,7 @@ function offside_scanner(raw_lines) ::
           idx, content, indent: indent || '',
       else ::
         return @{} __proto__: base
-          idx, blank:true
+          idx, content:'', blank:true
 
   base.all_lines = all_lines
   return all_lines
@@ -34,9 +34,9 @@ const line_base = @{}
     return undefined === next ? false 
       : this.indent < next.indent
 
-  blockSlice() ::
-    const {idx: idx_end} = this.findBlockEnd()
-    return this.all_lines.slice(this.idx, idx_end+1)
+  blockSlice(blockEnd, offset=0) ::
+    const {idx: idx_end} = blockEnd || this.findBlockEnd()
+    return this.all_lines.slice(this.idx+offset, idx_end+1)
 
   findBlockEnd(indent) ::
     let {blockEnd} = this

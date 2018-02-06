@@ -22,7 +22,7 @@ export function jsy_renderer({file, source}) ::
     toJSON() :: return src_map_gen.toJSON()
     toComment() :: return `//# sourceMappingURL=data:application/json;charset=utf-8;base64,${this.toBase64()}`
     toBase64() :: 
-      const sz = src_map_gen.toString()
+      const sz = this.toString()
       if 'undefined' !== typeof Buffer ::
         return new Buffer(sz).toString('base64')
       else ::
@@ -48,14 +48,14 @@ export class JSYRenderer ::
     this._res = []
     this.ln = ln
     this.jsy_post = ln.jsy_stack
-      ? ' ' + ln.jsy_stack.join(' ')
+      ? ' ' + ln.jsy_stack.map(e=>e.post).join(' ')
       : ''
 
   _dispatch(op) ::
     if 'function' === typeof this[op.op] ::
       this[op.op](op)
     else ::
-      console.log @# '### DNU:', op.op, res[op.op]
+      console.log @# '### DNU:', op.op, op
       this._push(op)
 
   _push(op, b_srcmap) ::
@@ -92,3 +92,5 @@ export class JSYRenderer ::
   jsy_op(op) :: this._push(op)
 
   indent(op) :: this._push(op)
+  comma(op) :: this._push(op)
+

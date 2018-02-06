@@ -1,3 +1,5 @@
+const rx_indent = /^([ \t]*)/
+
 export default bindBasicScanner
 function bindBasicScanner(scannerList) ::
   if null == scannerList ::
@@ -38,6 +40,10 @@ function bindBasicScanner(scannerList) ::
           const tail = ops[ops.length-1]
           c0 = tail.c1
           content = ' '.repeat(c0) + content.slice(c0)
+      else ::
+        content.replace @ rx_indent, match => ::
+          emit @: op: 'indent', sz: match
+          c0 = match.length
 
       content.replace @ rx_scanner, (match, ...pairs) => ::
         pairs.pop() // content
