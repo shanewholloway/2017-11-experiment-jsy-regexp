@@ -3,8 +3,13 @@ export default bind_jsy_scanner
 
 const rx_eol = /^[ \t]*$/
 const rx_jsy_op_to_rx = /[@:.\/\\\(\)\{\}\[\]]/g
-
 const rx_insert_comma = /^[^., \t]/
+
+const op_non_content = @{}
+  'indent': true
+  'comment_multi': true
+  'comment_eol': true
+
 
 function bind_jsy_scanner(options={}) ::
   let {at_offside, keyword_locator} = options
@@ -46,13 +51,13 @@ function bind_jsy_scanner(options={}) ::
     offside_lines.src_map = jsy_render_ln.src_map
     return offside_lines
 
-  function _first_non_indent(ops) ::
+  function _first_content_op(ops) ::
     for let i=0; i < ops.length; i++ ::
-      if 'indent' !== ops[i].op ::
+      if ! op_non_content[ops[i].op] ::
         return ops[i]
-  function _last_non_comment(ops) ::
+  function _last_content_op(ops) ::
     for let i = ops.length - 1; 0 <= i ; i-- ::
-      if ! ops[i].op.startsWith('comment') ::
+      if ! op_non_content[ops[i].op] ::
         return ops[i]
 
   function jsy_expand_line(ln, ctx_outer) ::
@@ -60,8 +65,8 @@ function bind_jsy_scanner(options={}) ::
     const ctx = @{}
       __proto__: ctx_outer
       ln, jsy_stack: []
-      first_op: _first_non_indent(ops)
-      last_op: _last_non_comment(ops)
+      first_op: _first_content_op(ops)
+      last_op: _last_content_op(ops)
     const emit = op => :: new_ops.push(op)
     ln.ops = new_ops
 
@@ -71,14 +76,22 @@ function bind_jsy_scanner(options={}) ::
     fixup_jsy_stack(ctx)
     ctx_outer.in_kw = ctx.in_kw
     ctx_outer.jsy_op_eol = ctx.jsy_op_eol
+    if null != ctx.trailingComma ::
+      ctx_outer.trailingComma = ctx.trailingComma
 
   function jsy_split_ops(ctx, op, emit) ::
+    const is_first = ctx.first_op === op
+    if is_first && ctx.ln.allowImplicitComma ::
+      if ! ctx.trailingComma ::
+        emit @: op: 'comma', sz: ', '
+      ctx.trailingComma = false
+
     if 'src' !== op.op ::
       return emit(op)
 
     let c0=0, sz=op.sz, jsy_stack=ctx.jsy_stack
 
-    if ctx.first_op === op && ! ctx.in_kw ::
+    if is_first && ! ctx.in_kw ::
       // look for JSY keyword
       const m_kw = sz.match @ keyword_locator
 
@@ -123,6 +136,15 @@ function bind_jsy_scanner(options={}) ::
 
     ctx.jsy_op_eol = jsy_op_eol
 
+    if is_last ::
+      const last = _last_content_op(ctx.ln.ops)
+      if null != last ::
+        ctx.trailingComma = 1>=jsy_stack.length && /[,]\s*$/.test(last.sz || '')
+        if 0 && ctx.trailingComma ::
+          console.log @ 'trailing comma', ctx.trailingComma, last
+          console.dir @ ctx.ln, @{} colors: true, depth: null
+          console.log()
+
 
   function fixup_jsy_stack(ctx) ::
     let {ln, jsy_stack, jsy_op_eol} = ctx
@@ -131,40 +153,35 @@ function bind_jsy_scanner(options={}) ::
 
     const end = ln.findBlockEnd()
 
-    //if implicitCommas :: fixup_jsy_implicit_commas(end, ctx)
+    if implicitCommas :: fixup_jsy_implicit_commas(end, ctx)
 
     if ! jsy_stack.length :: return
 
     if jsy_op_eol ::
+      // everything goes inside
       end.jsy_stack = [].concat @ jsy_stack, end.jsy_stack || []
-      return
 
-    end.jsy_stack = [jsy_stack.pop()].concat @ end.jsy_stack || []
-    ln.jsy_stack = jsy_stack.concat @ ln.jsy_stack || []
+    else ::
+      // TODO: apply nestInner from jsy_stack entries
+      end.jsy_stack = [jsy_stack.pop()].concat @ end.jsy_stack || []
+      ln.jsy_stack = jsy_stack.concat @ ln.jsy_stack || []
 
 
   function fixup_jsy_implicit_commas(end, ctx) ::
-    let {ln} = ctx
-    const blk_slice = ln.blockSlice(end, 1)
-    if blk_slice.length <= 1 ::
-      return
+    const blk_slice = ctx.ln.blockSlice(end, 1)
 
-    let blk_indent = blk_slice[0].indent
+    let blk_indent = blk_slice.length > 0 ? blk_slice[0].indent : ''
     for const ln_in of blk_slice ::
+      ln_in.allowImplicitComma = null
       if blk_indent > ln_in.indent ::
         blk_indent = ln_in.indent
 
-    // TODO: track trailing commas…
     for const ln_in of blk_slice ::
       if blk_indent != ln_in.indent :: continue
       if 'indent' !== ln_in.ops[0].op :: continue
       if ln_in === blk_slice[0] :: continue
       if rx_insert_comma.test @ ln_in.content.slice(ln_in.indent.length) ::
-        ln_in.ops.splice @ 1,0, @{} op: 'comma', sz: ', '
-        console.log()
-        console.log @# ln.content
-        console.log @# ln_in.content
-        console.log @ ln_in.ops //.map @ e => e.sz
+        ln_in.allowImplicitComma = true
 
 
 function is_eol_match(sz, pos, len) ::
